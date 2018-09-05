@@ -14,7 +14,7 @@ DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
 
 //////////////////////////////////////////////////////////////////////////
 // AWTFProjectCharacter
-
+//#pragma optimize("", off)
 AWTFProjectCharacter::AWTFProjectCharacter()
 {
 	// Use only Yaw from the controller and ignore the rest of the rotation.
@@ -155,3 +155,4 @@ void AWTFProjectCharacter::UpdateCharacter()
 		}
 	}
 }
+//#pragma optimize("", on)
