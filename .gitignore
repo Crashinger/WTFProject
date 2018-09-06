@@ -1,13 +1,6 @@
-/WTFProject/.vs/WTFProject/v15/.suo
-/WTFProject/.vs/WTFProject/v15/Browse.VC.db
-/WTFProject/.vs/WTFProject/v15/Browse.VC.opendb
-/WTFProject/.vs/WTFProject/v15/Solution.VC.db
-/WTFProject/.vs/WTFProject/v15/ipch/AutoPCH/3a39dc83b8607069/WTFPROJECTCHARACTER.ipch
-/WTFProject/.vs/WTFProject/v15/ipch/AutoPCH/8131145950c6e905/WTFPROJECTGAMEMODE.ipch
-/WTFProject/.vs/WTFProject/v15/ipch/AutoPCH/919c8898ca7cb24c/FLIPBOOKASSETTYPEACTIONS.ipch
-/WTFProject/.vs/WTFProject/v15/ipch/AutoPCH/f750ad6fe8e51fd8/WTFPROJECT.ipch
-/WTFProject/.vs/WTFProject/v15/ipch/AutoPCH/fdffa7e9a07e4f3b/WTFPROJECT.ipch
+/WTFProject/.vs/
 /WTFProject/Binaries/Win64/*.pdb
 /WTFProject/Intermediate/
 /WTFProject/Saved/
 /WTFProject/WTFProject.sln
+/WTFProject/Config.ini
