@@ -14,6 +14,15 @@
 
 DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
 
+void AWTFProjectCharacter::Pick()
+{
+	FMovementBlock BlockInfo;
+	BlockInfo.bTimed = true;
+	BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
+	BlockInfo.Time = 1.f;
+	MovementBlocks.Add(BlockInfo);
+}
+
 void AWTFProjectCharacter::Throw()
 {
 	UWorld* World = GetWorld();
@@ -111,6 +120,34 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 //////////////////////////////////////////////////////////////////////////
 // Animation
 
+bool AWTFProjectCharacter::CanMove() const
+{
+	bool Res = true;
+	if (MovementBlocks.Num() > 0)
+		Res = false;
+	return Res;
+}
+
+void AWTFProjectCharacter::UpdateMovementBlocks(float DeltaTime)
+{
+	int i = 0;
+	bool RemoveCurrent;
+	while (i < MovementBlocks.Num())
+	{
+		RemoveCurrent = false;
+		if (MovementBlocks[i].bTimed)
+		{
+			MovementBlocks[i].Time -= DeltaTime;
+			if (MovementBlocks[i].Time <= 0.f)
+				RemoveCurrent = true;
+		}
+		if (RemoveCurrent)
+			MovementBlocks.RemoveAt(i);
+		else
+			i++;
+	}
+}
+
 void AWTFProjectCharacter::UpdateAnimationState()
 {
 	EAnimationState OldAnimationState = CurrentAnimationState;
@@ -118,7 +155,20 @@ void AWTFProjectCharacter::UpdateAnimationState()
 	const FVector PlayerVelocity = GetVelocity();
 	const float PlayerSpeedSqr = PlayerVelocity.SizeSquared();
 
-	if (PlayerSpeedSqr > 0.0f)
+	//Сомнительная проверка. Мб стейты персонажа ещё завести...
+	bool PickSate = false;
+	for (int i = 0; i < MovementBlocks.Num(); i++)
+	{
+		if (MovementBlocks[i].Reason == EMovementBlockReason::MBR_Pick)
+			PickSate = true;
+	}
+	//--------------
+
+	if (PickSate)
+	{
+		CurrentAnimationState = EAnimationState::AS_Pick;
+	}
+	else if (PlayerSpeedSqr > 0.0f)
 	{
 		CurrentAnimationState = EAnimationState::AS_Walk;
 	}
@@ -148,7 +198,8 @@ void AWTFProjectCharacter::UpdateAnimation()
 void AWTFProjectCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	
+
+	UpdateMovementBlocks(DeltaSeconds);
 	UpdateCharacter();	
 }
 
@@ -156,6 +207,7 @@ void AWTFProjectCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	GetSprite()->PlayFromStart();
+	MovementBlocks.Empty();
 }
 
 
@@ -174,6 +226,7 @@ void AWTFProjectCharacter::SetupPlayerInputComponent(class UInputComponent* Play
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AWTFProjectCharacter::Throw);
+	PlayerInputComponent->BindAction("Pick", IE_Pressed, this, &AWTFProjectCharacter::Pick);
 	PlayerInputComponent->BindAxis("MoveRight", this, &AWTFProjectCharacter::MoveRight);
 
 	PlayerInputComponent->BindTouch(IE_Pressed, this, &AWTFProjectCharacter::TouchStarted);
@@ -185,13 +238,15 @@ void AWTFProjectCharacter::MoveRight(float Value)
 	/*UpdateChar();*/
 
 	// Apply the input to the character motion
-	AddMovementInput(FVector(1.0f, 0.0f, 0.0f), Value);
+	if (CanMove())
+		AddMovementInput(FVector(1.0f, 0.0f, 0.0f), Value);
 }
 
 void AWTFProjectCharacter::TouchStarted(const ETouchIndex::Type FingerIndex, const FVector Location)
 {
 	// Jump on any touch
-	Jump();
+	if (CanMove())
+		Jump();
 }
 
 void AWTFProjectCharacter::TouchStopped(const ETouchIndex::Type FingerIndex, const FVector Location)

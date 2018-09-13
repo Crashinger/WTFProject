@@ -36,6 +36,28 @@ enum class EAnimationState: uint8
 	AS_Fall UMETA(DisplayName = "Fall")
 };
 
+UENUM(BlueprintType)
+enum class EMovementBlockReason : uint8
+{
+	MBR_Pick UMETA(DisplayName = "Pick"),
+	MBR_Aim UMETA(DisplayName = "Aim")
+};
+
+USTRUCT(BlueprintType)
+struct FMovementBlock
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MovementBlock")
+	EMovementBlockReason Reason = EMovementBlockReason::MBR_Aim;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MovementBlock")
+	bool bTimed = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MovementBlock")
+	float Time = 0.f;
+};
+
 USTRUCT(BlueprintType)
 struct FAnimations
 {
@@ -73,6 +95,11 @@ protected:
 
 	EAnimationState CurrentAnimationState = EAnimationState::AS_Idle;
 
+	TArray<FMovementBlock> MovementBlocks;
+
+
+	bool CanMove() const;
+	void UpdateMovementBlocks(float DeltaTime);
 
 	void UpdateAnimationState();
 
@@ -95,6 +122,8 @@ protected:
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
 	// End of APawn interface
 
+	UFUNCTION(BlueprintCallable, Category = "Stone")
+	void Pick();
 
 	UFUNCTION(BlueprintCallable, Category = "Stone")
 	void Throw();
