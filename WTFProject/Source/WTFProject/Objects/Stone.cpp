@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Stone.h"
+#include "WTFProjectCharacter.h"
 
 AStone::AStone()
 {
@@ -20,7 +21,8 @@ AStone::AStone()
 
 void AStone::OnHit(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
 {
-	if (CanDealDamage)
+	AWTFProjectCharacter* HitChar = Cast<AWTFProjectCharacter>(OtherActor);
+	if (CanDealDamage && HitChar && HitChar != GetInstigator())
 	{
 		CanDealDamage = false;
 		MovementComponent->HandleImpact(SweepResult);

@@ -7,6 +7,7 @@
 #include "WTFProjectCharacter.generated.h"
 
 class UTextRenderComponent;
+class AStone;
 
 /**
  * This class is the default character for WTFProject, and it is responsible for all
@@ -31,7 +32,13 @@ class AWTFProjectCharacter : public APaperCharacter
 
 	UTextRenderComponent* TextComponent;
 	virtual void Tick(float DeltaSeconds) override;
+
+	FVector StoneSpawnLocation = FVector(0.f, 0.f, 0.f);
+
 protected:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	TSubclassOf<AStone> StoneClass = nullptr;
+
 	// The animation to play while running around
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Animations)
 	class UPaperFlipbook* RunningAnimation;
@@ -57,6 +64,13 @@ protected:
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
 	// End of APawn interface
+
+
+	UFUNCTION(BlueprintCallable, Category = "Stone")
+	void Throw();
+
+	UFUNCTION(BlueprintCallable, Category = "Stone")
+	FVector GetViewDirection() const;
 
 public:
 	AWTFProjectCharacter();

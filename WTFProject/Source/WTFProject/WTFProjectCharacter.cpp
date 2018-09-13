@@ -8,9 +8,39 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
+#include "Engine/World.h"
+#include "Objects/Stone.h"
+#include "GameFramework/PlayerController.h"
 #include "Camera/CameraComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
+
+void AWTFProjectCharacter::Throw()
+{
+	UWorld* World = GetWorld();
+	if (World && StoneClass)
+	{
+		FActorSpawnParameters Params;
+		Params.Instigator = this;
+		FRotator Rotation = GetViewDirection().Rotation();
+		FVector Location = GetActorLocation() + StoneSpawnLocation;
+		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
+	}
+}
+
+FVector AWTFProjectCharacter::GetViewDirection() const
+{
+	FVector Res = FVector(0.f, 0.f, 0.f);
+	APlayerController* Controller = Cast<APlayerController>(GetController());
+	if (Controller)
+	{
+		FVector Direction;
+		if (Controller->DeprojectMousePositionToWorld(Res, Direction))
+			Res.Y = 0.f;
+	}
+	Res = (Res - GetActorLocation()).GetSafeNormal();
+	return Res;
+}
 
 //////////////////////////////////////////////////////////////////////////
 // AWTFProjectCharacter
@@ -106,8 +136,15 @@ void AWTFProjectCharacter::Tick(float DeltaSeconds)
 void AWTFProjectCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
 {
 	// Note: the 'Jump' action and the 'MoveRight' axis are bound to actual keys/buttons/sticks in DefaultInput.ini (editable from Project Settings..Input)
+	APlayerController* Controller = Cast<APlayerController>(GetController());
+	if (Controller)
+	{
+		Controller->bShowMouseCursor = true;
+	}
+
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AWTFProjectCharacter::Throw);
 	PlayerInputComponent->BindAxis("MoveRight", this, &AWTFProjectCharacter::MoveRight);
 
 	PlayerInputComponent->BindTouch(IE_Pressed, this, &AWTFProjectCharacter::TouchStarted);

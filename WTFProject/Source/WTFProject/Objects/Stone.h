@@ -8,6 +8,8 @@
 #include "Components/ProjectileMovement.h"
 #include "Stone.generated.h"
 
+class AWTFProjectCharacter;
+
 /**
  * 
  */
