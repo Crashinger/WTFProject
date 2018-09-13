@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "PaperCharacter.h"
+#include "PaperFlipbookComponent.h"
 #include "WTFProjectCharacter.generated.h"
 
 class UTextRenderComponent;
@@ -17,6 +18,33 @@ class AStone;
  * The CharacterMovementComponent (inherited from ACharacter) handles movement of the collision capsule
  * The Sprite component (inherited from APaperCharacter) handles the visuals
  */
+
+UENUM(BlueprintType)
+enum class EAnimationState: uint8
+{
+	AS_Idle UMETA(DisplayName = "Idle"),
+	AS_Walk UMETA(DisplayName = "Walk"),
+	AS_CarryIdle UMETA(DisplayName = "CarryIdle"),
+	AS_CarryWalk UMETA(DisplayName = "CarryWalk"),
+	AS_AimingUp UMETA(DisplayName = "AimingUp"),
+	AS_AimingDown UMETA(DisplayName = "AimingDown"),
+	AS_AimingFront UMETA(DisplayName = "AimingFront"),
+	AS_Throw UMETA(DisplayName = "Throw"),
+	AS_Pick UMETA(DisplayName = "Pick"),
+	AS_Hit UMETA(DisplayName = "Hit"),
+	AS_Jump UMETA(DisplayName = "Jump"),
+	AS_Fall UMETA(DisplayName = "Fall")
+};
+
+USTRUCT(BlueprintType)
+struct FAnimations
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animaton")
+	TArray<UPaperFlipbook*> Animations;
+};
+
 UCLASS(config=Game)
 class AWTFProjectCharacter : public APaperCharacter
 {
@@ -30,8 +58,9 @@ class AWTFProjectCharacter : public APaperCharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class USpringArmComponent* CameraBoom;
 
-	UTextRenderComponent* TextComponent;
+	//UTextRenderComponent* TextComponent;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void BeginPlay() override;
 
 	FVector StoneSpawnLocation = FVector(0.f, 0.f, 0.f);
 
@@ -39,15 +68,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
 	TSubclassOf<AStone> StoneClass = nullptr;
 
-	// The animation to play while running around
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Animations)
-	class UPaperFlipbook* RunningAnimation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animations")
+	TMap<EAnimationState, FAnimations> AnimationStates;
 
-	// The animation to play while idle (standing still)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animations)
-	class UPaperFlipbook* IdleAnimation;
+	EAnimationState CurrentAnimationState = EAnimationState::AS_Idle;
+
+
+	void UpdateAnimationState();
 
 	/** Called to choose the correct animation to play based on the character's movement state */
+	UFUNCTION()
 	void UpdateAnimation();
 
 	/** Called for side to side input */

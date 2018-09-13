@@ -1,7 +1,6 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "WTFProjectCharacter.h"
-#include "PaperFlipbookComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -104,22 +103,46 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	// Enable replication on the Sprite component so animations show up when networked
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
+
+	GetSprite()->OnFinishedPlaying.AddDynamic(this, &AWTFProjectCharacter::UpdateAnimation);
+	GetSprite()->SetLooping(false);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Animation
 
-void AWTFProjectCharacter::UpdateAnimation()
+void AWTFProjectCharacter::UpdateAnimationState()
 {
+	EAnimationState OldAnimationState = CurrentAnimationState;
+
 	const FVector PlayerVelocity = GetVelocity();
 	const float PlayerSpeedSqr = PlayerVelocity.SizeSquared();
 
-	// Are we moving or standing still?
-	UPaperFlipbook* DesiredAnimation = (PlayerSpeedSqr > 0.0f) ? RunningAnimation : IdleAnimation;
-	if( GetSprite()->GetFlipbook() != DesiredAnimation 	)
+	if (PlayerSpeedSqr > 0.0f)
 	{
-		GetSprite()->SetFlipbook(DesiredAnimation);
+		CurrentAnimationState = EAnimationState::AS_Walk;
 	}
+	else
+	{
+		CurrentAnimationState = EAnimationState::AS_Idle;
+	}
+
+	if (OldAnimationState != CurrentAnimationState)
+	{
+		UpdateAnimation();
+	}
+}
+
+void AWTFProjectCharacter::UpdateAnimation()
+{
+	if (AnimationStates.Contains(CurrentAnimationState) && AnimationStates[CurrentAnimationState].Animations.Num() > 0)
+	{
+		int Indx = FMath::Rand() % AnimationStates[CurrentAnimationState].Animations.Num();
+
+		if (AnimationStates[CurrentAnimationState].Animations[Indx])
+			GetSprite()->SetFlipbook(AnimationStates[CurrentAnimationState].Animations[Indx]);
+	}
+	GetSprite()->PlayFromStart();
 }
 
 void AWTFProjectCharacter::Tick(float DeltaSeconds)
@@ -127,6 +150,12 @@ void AWTFProjectCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	
 	UpdateCharacter();	
+}
+
+void AWTFProjectCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	GetSprite()->PlayFromStart();
 }
 
 
@@ -174,7 +203,7 @@ void AWTFProjectCharacter::TouchStopped(const ETouchIndex::Type FingerIndex, con
 void AWTFProjectCharacter::UpdateCharacter()
 {
 	// Update animation to match the motion
-	UpdateAnimation();
+	UpdateAnimationState();
 
 	// Now setup the rotation of the controller based on the direction we are travelling
 	const FVector PlayerVelocity = GetVelocity();	
