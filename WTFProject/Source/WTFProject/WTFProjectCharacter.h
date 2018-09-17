@@ -26,6 +26,7 @@ enum class EAnimationState: uint8
 	AS_Walk UMETA(DisplayName = "Walk"),
 	AS_CarryIdle UMETA(DisplayName = "CarryIdle"),
 	AS_CarryWalk UMETA(DisplayName = "CarryWalk"),
+	AS_CarryFall UMETA(DisplayName = "CarryFall"),
 	AS_AimingUp UMETA(DisplayName = "AimingUp"),
 	AS_AimingDown UMETA(DisplayName = "AimingDown"),
 	AS_AimingFront UMETA(DisplayName = "AimingFront"),
@@ -97,6 +98,9 @@ protected:
 
 	TArray<FMovementBlock> MovementBlocks;
 
+	bool bIsAiming = false;
+	int Ammo = 0;
+
 
 	bool CanMove() const;
 	void UpdateMovementBlocks(float DeltaTime);
@@ -123,15 +127,11 @@ protected:
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
 	// End of APawn interface
 
-	UFUNCTION(BlueprintCallable, Category = "Stone")
 	void Pick();
-
-	UFUNCTION(BlueprintCallable, Category = "Stone")
 	void Throw();
-
+	void Aim();
 	void CharJump();
 
-	UFUNCTION(BlueprintCallable, Category = "Stone")
 	FVector GetViewDirection() const;
 
 public:

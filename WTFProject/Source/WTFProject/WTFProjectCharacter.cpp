@@ -14,59 +14,9 @@
 
 DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
 
-void AWTFProjectCharacter::Pick()
-{
-	FMovementBlock BlockInfo;
-	BlockInfo.bTimed = true;
-	BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
-	BlockInfo.Time = 1.f;
-	CurrentAnimationState = EAnimationState::AS_Pick;
-	MovementBlocks.Add(BlockInfo);
-	UpdateFlipbook();
-}
-
-void AWTFProjectCharacter::Throw()
-{
-	UWorld* World = GetWorld();
-	if (World && StoneClass)
-	{
-		FActorSpawnParameters Params;
-		Params.Instigator = this;
-		FRotator Rotation = GetViewDirection().Rotation();
-		FVector Location = GetActorLocation() + StoneSpawnLocation;
-		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
-		CurrentAnimationState = EAnimationState::AS_Throw;
-		UpdateFlipbook();
-	}
-}
-
-void AWTFProjectCharacter::CharJump()
-{
-	if (CanMove() && !GetCharacterMovement()->IsFalling())
-	{
-		Jump();
-		CurrentAnimationState = EAnimationState::AS_Jump;
-		UpdateFlipbook();
-	}
-}
-
-FVector AWTFProjectCharacter::GetViewDirection() const
-{
-	FVector Res = FVector(0.f, 0.f, 0.f);
-	APlayerController* Controller = Cast<APlayerController>(GetController());
-	if (Controller)
-	{
-		FVector Direction;
-		if (Controller->DeprojectMousePositionToWorld(Res, Direction))
-			Res.Y = 0.f;
-	}
-	Res = (Res - GetActorLocation()).GetSafeNormal();
-	return Res;
-}
-
 //////////////////////////////////////////////////////////////////////////
 // AWTFProjectCharacter
-//#pragma optimize("", off)
+#pragma optimize("", off)
 AWTFProjectCharacter::AWTFProjectCharacter()
 {
 	// Use only Yaw from the controller and ignore the rest of the rotation.
@@ -86,7 +36,7 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	CameraBoom->bAbsoluteRotation = true;
 	CameraBoom->bDoCollisionTest = false;
 	CameraBoom->RelativeRotation = FRotator(0.0f, -90.0f, 0.0f);
-	
+
 
 	// Create an orthographic camera (no perspective) and attach it to the boom
 	SideViewCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("SideViewCamera"));
@@ -117,11 +67,11 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	// behavior on the edge of a ledge versus inclines by setting this to true or false
 	GetCharacterMovement()->bUseFlatBaseForFloorChecks = true;
 
-    // 	TextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("IncarGear"));
-    // 	TextComponent->SetRelativeScale3D(FVector(3.0f, 3.0f, 3.0f));
-    // 	TextComponent->SetRelativeLocation(FVector(35.0f, 5.0f, 20.0f));
-    // 	TextComponent->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
-    // 	TextComponent->SetupAttachment(RootComponent);
+	// 	TextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("IncarGear"));
+	// 	TextComponent->SetRelativeScale3D(FVector(3.0f, 3.0f, 3.0f));
+	// 	TextComponent->SetRelativeLocation(FVector(35.0f, 5.0f, 20.0f));
+	// 	TextComponent->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
+	// 	TextComponent->SetupAttachment(RootComponent);
 
 	// Enable replication on the Sprite component so animations show up when networked
 	GetSprite()->SetIsReplicated(true);
@@ -130,8 +80,62 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	GetSprite()->SetLooping(false);
 }
 
-//////////////////////////////////////////////////////////////////////////
-// Animation
+void AWTFProjectCharacter::Pick()
+{
+	FMovementBlock BlockInfo;
+	BlockInfo.bTimed = true;
+	BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
+	BlockInfo.Time = 1.f;
+	CurrentAnimationState = EAnimationState::AS_Pick;
+	MovementBlocks.Add(BlockInfo);
+	UpdateFlipbook();
+}
+
+void AWTFProjectCharacter::Throw()
+{
+	UWorld* World = GetWorld();
+	bIsAiming = false;
+	if (World && StoneClass)
+	{
+		FActorSpawnParameters Params;
+		Params.Instigator = this;
+		FRotator Rotation = GetViewDirection().Rotation();
+		FVector Location = GetActorLocation() + StoneSpawnLocation;
+		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
+		CurrentAnimationState = EAnimationState::AS_Throw;
+		UpdateFlipbook();
+	}
+}
+
+void AWTFProjectCharacter::Aim()
+{
+	bIsAiming = true;
+}
+
+void AWTFProjectCharacter::CharJump()
+{
+	if (CanMove() && !GetCharacterMovement()->IsFalling())
+	{
+		Jump();
+		CurrentAnimationState = EAnimationState::AS_Jump;
+		UpdateFlipbook();
+	}
+}
+
+FVector AWTFProjectCharacter::GetViewDirection() const
+{
+	FVector Res = FVector(0.f, 0.f, 0.f);
+	APlayerController* PlController = Cast<APlayerController>(GetController());
+	if (PlController)
+	{
+		FVector Direction;
+		if (PlController->DeprojectMousePositionToWorld(Res, Direction))
+			Res.Y = 0.f;
+	}
+	Res = (Res - GetActorLocation()).GetSafeNormal();
+	return Res;
+}
+
 
 bool AWTFProjectCharacter::CanMove() const
 {
@@ -216,6 +220,12 @@ void AWTFProjectCharacter::UpdateAnimation()
 	{
 		CurrentAnimationState = EAnimationState::AS_Fall;
 	}
+
+	if (
+		CurrentAnimationState != EAnimationState::AS_AimingDown &&
+		CurrentAnimationState != EAnimationState::AS_AimingFront &&
+		CurrentAnimationState != EAnimationState::AS_AimingUp
+		)
 	UpdateFlipbook();
 }
 
@@ -241,15 +251,16 @@ void AWTFProjectCharacter::BeginPlay()
 void AWTFProjectCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
 {
 	// Note: the 'Jump' action and the 'MoveRight' axis are bound to actual keys/buttons/sticks in DefaultInput.ini (editable from Project Settings..Input)
-	APlayerController* Controller = Cast<APlayerController>(GetController());
-	if (Controller)
+	APlayerController* PlController = Cast<APlayerController>(GetController());
+	if (PlController)
 	{
-		Controller->bShowMouseCursor = true;
+		PlController->bShowMouseCursor = true;
 	}
 
 	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AWTFProjectCharacter::CharJump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
-	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AWTFProjectCharacter::Throw);
+	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AWTFProjectCharacter::Aim);
+	PlayerInputComponent->BindAction("Throw", IE_Released, this, &AWTFProjectCharacter::Throw);
 	PlayerInputComponent->BindAction("Pick", IE_Pressed, this, &AWTFProjectCharacter::Pick);
 	PlayerInputComponent->BindAxis("MoveRight", this, &AWTFProjectCharacter::MoveRight);
 
@@ -290,16 +301,54 @@ void AWTFProjectCharacter::UpdateCharacter()
 	const FVector PlayerVelocity = GetVelocity();	
 	float TravelDirection = PlayerVelocity.X;
 	// Set the rotation so that the character faces his direction of travel.
-	if (Controller != nullptr)
+	if (GetController())
 	{
-		if (TravelDirection < 0.0f)
+		APlayerController* PlController = Cast<APlayerController>(GetController());
+		if (bIsAiming)
 		{
-			Controller->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+			FVector Direction;
+			FVector Location;
+			if (PlController->DeprojectMousePositionToWorld(Location, Direction))
+			{
+				Location.Y = 0.f;
+				Direction = (Location - GetActorLocation()).GetSafeNormal();
+				if (Direction.X >= 0)
+				{
+					GetController()->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+				}
+				else
+				{
+					GetController()->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+				}
+				float AimAngle = FMath::UnwindDegrees(FMath::RadiansToDegrees(acosf(FVector::DotProduct(GetActorForwardVector(), Direction)))) * FMath::Sign(Direction.Z);
+
+				EAnimationState OldState = CurrentAnimationState;
+				if (AimAngle > 30.f)
+				{
+					CurrentAnimationState = EAnimationState::AS_AimingUp;
+				}
+				else if (AimAngle < -30.f)
+				{
+					CurrentAnimationState = EAnimationState::AS_AimingDown;
+				}
+				else
+				{
+					CurrentAnimationState = EAnimationState::AS_AimingFront;
+				}
+				if (OldState != CurrentAnimationState)
+				{
+					UpdateFlipbook();
+				}
+			}
+		}
+		else if (TravelDirection < 0.0f)
+		{
+			GetController()->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
 		}
 		else if (TravelDirection > 0.0f)
 		{
-			Controller->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+			GetController()->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
 		}
 	}
 }
-//#pragma optimize("", on)
+#pragma optimize("", on)
