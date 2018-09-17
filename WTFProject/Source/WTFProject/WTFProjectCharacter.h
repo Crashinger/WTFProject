@@ -106,6 +106,7 @@ protected:
 	/** Called to choose the correct animation to play based on the character's movement state */
 	UFUNCTION()
 	void UpdateAnimation();
+	void UpdateFlipbook();
 
 	/** Called for side to side input */
 	void MoveRight(float Value);
@@ -127,6 +128,8 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category = "Stone")
 	void Throw();
+
+	void CharJump();
 
 	UFUNCTION(BlueprintCallable, Category = "Stone")
 	FVector GetViewDirection() const;

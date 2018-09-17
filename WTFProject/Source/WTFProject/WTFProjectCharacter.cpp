@@ -20,7 +20,9 @@ void AWTFProjectCharacter::Pick()
 	BlockInfo.bTimed = true;
 	BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
 	BlockInfo.Time = 1.f;
+	CurrentAnimationState = EAnimationState::AS_Pick;
 	MovementBlocks.Add(BlockInfo);
+	UpdateFlipbook();
 }
 
 void AWTFProjectCharacter::Throw()
@@ -33,6 +35,18 @@ void AWTFProjectCharacter::Throw()
 		FRotator Rotation = GetViewDirection().Rotation();
 		FVector Location = GetActorLocation() + StoneSpawnLocation;
 		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
+		CurrentAnimationState = EAnimationState::AS_Throw;
+		UpdateFlipbook();
+	}
+}
+
+void AWTFProjectCharacter::CharJump()
+{
+	if (CanMove() && !GetCharacterMovement()->IsFalling())
+	{
+		Jump();
+		CurrentAnimationState = EAnimationState::AS_Jump;
+		UpdateFlipbook();
 	}
 }
 
@@ -112,7 +126,6 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	// Enable replication on the Sprite component so animations show up when networked
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
-
 	GetSprite()->OnFinishedPlaying.AddDynamic(this, &AWTFProjectCharacter::UpdateAnimation);
 	GetSprite()->SetLooping(false);
 }
@@ -155,24 +168,18 @@ void AWTFProjectCharacter::UpdateAnimationState()
 	const FVector PlayerVelocity = GetVelocity();
 	const float PlayerSpeedSqr = PlayerVelocity.SizeSquared();
 
-	//Сомнительная проверка. Мб стейты персонажа ещё завести...
-	bool PickSate = false;
-	for (int i = 0; i < MovementBlocks.Num(); i++)
+	//Кривовато
+	if (PlayerSpeedSqr > 0.0f)
 	{
-		if (MovementBlocks[i].Reason == EMovementBlockReason::MBR_Pick)
-			PickSate = true;
+		if (GetCharacterMovement()->IsFalling())
+		{
+			if (CurrentAnimationState != EAnimationState::AS_Jump)
+				CurrentAnimationState = EAnimationState::AS_Fall;
+		}
+		else
+			CurrentAnimationState = EAnimationState::AS_Walk;
 	}
-	//--------------
-
-	if (PickSate)
-	{
-		CurrentAnimationState = EAnimationState::AS_Pick;
-	}
-	else if (PlayerSpeedSqr > 0.0f)
-	{
-		CurrentAnimationState = EAnimationState::AS_Walk;
-	}
-	else
+	else if (CurrentAnimationState == EAnimationState::AS_Walk || CurrentAnimationState == EAnimationState::AS_Fall || CurrentAnimationState == EAnimationState::AS_Jump)
 	{
 		CurrentAnimationState = EAnimationState::AS_Idle;
 	}
@@ -183,7 +190,7 @@ void AWTFProjectCharacter::UpdateAnimationState()
 	}
 }
 
-void AWTFProjectCharacter::UpdateAnimation()
+void AWTFProjectCharacter::UpdateFlipbook()
 {
 	if (AnimationStates.Contains(CurrentAnimationState) && AnimationStates[CurrentAnimationState].Animations.Num() > 0)
 	{
@@ -193,6 +200,23 @@ void AWTFProjectCharacter::UpdateAnimation()
 			GetSprite()->SetFlipbook(AnimationStates[CurrentAnimationState].Animations[Indx]);
 	}
 	GetSprite()->PlayFromStart();
+}
+
+void AWTFProjectCharacter::UpdateAnimation()
+{
+	if (
+		CurrentAnimationState == EAnimationState::AS_Throw ||
+		CurrentAnimationState == EAnimationState::AS_Pick ||
+		CurrentAnimationState == EAnimationState::AS_Hit
+		)
+	{
+		CurrentAnimationState = EAnimationState::AS_Idle;
+	}
+	else if (CurrentAnimationState == EAnimationState::AS_Jump)
+	{
+		CurrentAnimationState = EAnimationState::AS_Fall;
+	}
+	UpdateFlipbook();
 }
 
 void AWTFProjectCharacter::Tick(float DeltaSeconds)
@@ -223,7 +247,7 @@ void AWTFProjectCharacter::SetupPlayerInputComponent(class UInputComponent* Play
 		Controller->bShowMouseCursor = true;
 	}
 
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AWTFProjectCharacter::CharJump);
 	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
 	PlayerInputComponent->BindAction("Throw", IE_Pressed, this, &AWTFProjectCharacter::Throw);
 	PlayerInputComponent->BindAction("Pick", IE_Pressed, this, &AWTFProjectCharacter::Pick);
@@ -246,7 +270,9 @@ void AWTFProjectCharacter::TouchStarted(const ETouchIndex::Type FingerIndex, con
 {
 	// Jump on any touch
 	if (CanMove())
+	{
 		Jump();
+	}
 }
 
 void AWTFProjectCharacter::TouchStopped(const ETouchIndex::Type FingerIndex, const FVector Location)
