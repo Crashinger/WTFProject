@@ -16,7 +16,8 @@ DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
 
 //////////////////////////////////////////////////////////////////////////
 // AWTFProjectCharacter
-#pragma optimize("", off)
+
+//#pragma optimize("", off)
 AWTFProjectCharacter::AWTFProjectCharacter()
 {
 	// Use only Yaw from the controller and ignore the rest of the rotation.
@@ -48,77 +49,192 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 	CameraBoom->bAbsoluteRotation = true;
 	SideViewCameraComponent->bUsePawnControlRotation = false;
 	SideViewCameraComponent->bAutoActivate = true;
-	GetCharacterMovement()->bOrientRotationToMovement = false;
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->bOrientRotationToMovement = false;
 
-	// Configure character movement
-	GetCharacterMovement()->GravityScale = 2.0f;
-	GetCharacterMovement()->AirControl = 0.80f;
-	GetCharacterMovement()->JumpZVelocity = 1000.f;
-	GetCharacterMovement()->GroundFriction = 3.0f;
-	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
-	GetCharacterMovement()->MaxFlySpeed = 600.0f;
+		// Configure character movement
+		GetCharacterMovement()->GravityScale = 2.0f;
+		GetCharacterMovement()->AirControl = 0.80f;
+		GetCharacterMovement()->JumpZVelocity = 1000.f;
+		GetCharacterMovement()->GroundFriction = 3.0f;
+		GetCharacterMovement()->MaxWalkSpeed = 600.0f;
+		GetCharacterMovement()->MaxFlySpeed = 600.0f;
 
-	// Lock character motion onto the XZ plane, so the character can't move in or out of the screen
-	GetCharacterMovement()->bConstrainToPlane = true;
-	GetCharacterMovement()->SetPlaneConstraintNormal(FVector(0.0f, -1.0f, 0.0f));
+		// Lock character motion onto the XZ plane, so the character can't move in or out of the screen
+		GetCharacterMovement()->bConstrainToPlane = true;
+		GetCharacterMovement()->SetPlaneConstraintNormal(FVector(0.0f, -1.0f, 0.0f));
 
-	// Behave like a traditional 2D platformer character, with a flat bottom instead of a curved capsule bottom
-	// Note: This can cause a little floating when going up inclines; you can choose the tradeoff between better
-	// behavior on the edge of a ledge versus inclines by setting this to true or false
-	GetCharacterMovement()->bUseFlatBaseForFloorChecks = true;
+		// Behave like a traditional 2D platformer character, with a flat bottom instead of a curved capsule bottom
+		// Note: This can cause a little floating when going up inclines; you can choose the tradeoff between better
+		// behavior on the edge of a ledge versus inclines by setting this to true or false
+		GetCharacterMovement()->bUseFlatBaseForFloorChecks = true;
+	}
 
-	// 	TextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("IncarGear"));
-	// 	TextComponent->SetRelativeScale3D(FVector(3.0f, 3.0f, 3.0f));
-	// 	TextComponent->SetRelativeLocation(FVector(35.0f, 5.0f, 20.0f));
-	// 	TextComponent->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
-	// 	TextComponent->SetupAttachment(RootComponent);
-
-	// Enable replication on the Sprite component so animations show up when networked
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
+
 	GetSprite()->OnFinishedPlaying.AddDynamic(this, &AWTFProjectCharacter::UpdateAnimation);
 	GetSprite()->SetLooping(false);
 }
 
 void AWTFProjectCharacter::Pick()
 {
-	FMovementBlock BlockInfo;
-	BlockInfo.bTimed = true;
-	BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
-	BlockInfo.Time = 1.f;
-	CurrentAnimationState = EAnimationState::AS_Pick;
-	MovementBlocks.Add(BlockInfo);
-	UpdateFlipbook();
+	if (CanPick())
+	{
+		TArray<AActor*> Stones;
+		GetOverlappingActors(Stones, AStone::StaticClass());
+		if (Stones.Num() > 0)
+		{
+			bool Picked = false;
+			int i = 0;
+			while (i < Stones.Num() && !Picked)
+			{
+				PickStone = Cast<AStone>(Stones[i]);
+				if (PickStone && PickStone->CanBePicked())
+					Picked = true;
+				else
+					i++;
+			}
+			if (Picked)
+			{
+				GetStone();
+				if (GetCharacterMovement())
+					GetCharacterMovement()->StopMovementImmediately();
+				FMovementBlock BlockInfo;
+				BlockInfo.bTimed = true;
+				BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
+				BlockInfo.Time = 1.f;
+				CurrentAnimationState = EAnimationState::AS_Pick;
+				AddMovementBlock(BlockInfo);
+				UpdateFlipbook();
+			}
+		}
+	}
+}
+
+bool AWTFProjectCharacter::CanPick()
+{
+	return !GetCharacterMovement() || !GetCharacterMovement()->IsFalling();
+}
+
+void AWTFProjectCharacter::GetStone()
+{
+	if (PickStone)
+		PickStone->Destroy();
+	Ammo++;
+}
+
+bool AWTFProjectCharacter::CanThrow()
+{
+	bool Res = !GetCharacterMovement() || !GetCharacterMovement()->IsFalling();
+	Res &= Ammo > 0;
+	Res &= !bThrowing;
+	return Res;
 }
 
 void AWTFProjectCharacter::Throw()
 {
+	if (CanThrow())
+	{
+		bThrowing = true;
+		StopAim();
+		FMovementBlock BlockInfo;
+		BlockInfo.Reason = EMovementBlockReason::MBR_Throw;
+		BlockInfo.bTimed = true;
+		BlockInfo.Time = ThrowTimer;
+		ThrowTimerCurrent = ThrowTimer;
+		AddMovementBlock(BlockInfo);
+		CurrentAnimationState = EAnimationState::AS_Throw;
+		UpdateFlipbook();
+	}
+}
+
+void AWTFProjectCharacter::StopThrow()
+{
+	bThrowing = false;
 	UWorld* World = GetWorld();
-	bIsAiming = false;
 	if (World && StoneClass)
 	{
 		FActorSpawnParameters Params;
 		Params.Instigator = this;
 		FRotator Rotation = GetViewDirection().Rotation();
 		FVector Location = GetActorLocation() + StoneSpawnLocation;
+		Ammo--;
 		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
-		CurrentAnimationState = EAnimationState::AS_Throw;
-		UpdateFlipbook();
 	}
 }
 
 void AWTFProjectCharacter::Aim()
 {
-	bIsAiming = true;
+	if (CanAim())
+	{
+		bIsAiming = true;
+		FMovementBlock BlockInfo;
+		BlockInfo.Reason = EMovementBlockReason::MBR_Aim;
+		BlockInfo.bTimed = false;
+		AddMovementBlock(BlockInfo);
+	}
+}
+
+void AWTFProjectCharacter::StopAim()
+{
+	bIsAiming = false;
+	RemoveSpecificMovementBlock(EMovementBlockReason::MBR_Aim);
+}
+
+bool AWTFProjectCharacter::IsAiming()
+{
+	return bIsAiming;
+}
+
+bool AWTFProjectCharacter::CanAim()
+{
+	bool Res = !GetCharacterMovement() || !GetCharacterMovement()->IsFalling();
+	Res &= Ammo > 0 && !bThrowing;
+	return Res;
 }
 
 void AWTFProjectCharacter::CharJump()
 {
-	if (CanMove() && !GetCharacterMovement()->IsFalling())
+	if (CanMove() && GetCharacterMovement() && !GetCharacterMovement()->IsFalling())
 	{
 		Jump();
 		CurrentAnimationState = EAnimationState::AS_Jump;
 		UpdateFlipbook();
+	}
+}
+
+void AWTFProjectCharacter::AddMovementBlock(FMovementBlock BlockInfo)
+{
+	int i = 0;
+	bool Added = false;
+	while (i < MovementBlocks.Num() && !Added)
+	{
+		if (MovementBlocks[i].Reason == BlockInfo.Reason)
+		{
+			MovementBlocks[i] = BlockInfo;
+			Added = true;
+		}
+		else
+			i++;
+	}
+
+	if (!Added)
+		MovementBlocks.Add(BlockInfo);
+}
+
+void AWTFProjectCharacter::RemoveSpecificMovementBlock(EMovementBlockReason Block)
+{
+	int i = 0;
+	while (i < MovementBlocks.Num())
+	{
+		if (MovementBlocks[i].Reason == Block)
+		{
+			MovementBlocks.RemoveAt(i);
+		}
+		else
+			i++;
 	}
 }
 
@@ -175,7 +291,7 @@ void AWTFProjectCharacter::UpdateAnimationState()
 	//Кривовато
 	if (PlayerSpeedSqr > 0.0f)
 	{
-		if (GetCharacterMovement()->IsFalling())
+		if (GetCharacterMovement() && GetCharacterMovement()->IsFalling())
 		{
 			if (CurrentAnimationState != EAnimationState::AS_Jump)
 				CurrentAnimationState = EAnimationState::AS_Fall;
@@ -234,7 +350,7 @@ void AWTFProjectCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateMovementBlocks(DeltaSeconds);
-	UpdateCharacter();	
+	UpdateCharacter(DeltaSeconds);
 }
 
 void AWTFProjectCharacter::BeginPlay()
@@ -292,19 +408,31 @@ void AWTFProjectCharacter::TouchStopped(const ETouchIndex::Type FingerIndex, con
 	StopJumping();
 }
 
-void AWTFProjectCharacter::UpdateCharacter()
+void AWTFProjectCharacter::UpdateCharacter(float DeltaSeconds)
 {
-	// Update animation to match the motion
 	UpdateAnimationState();
 
-	// Now setup the rotation of the controller based on the direction we are travelling
 	const FVector PlayerVelocity = GetVelocity();	
 	float TravelDirection = PlayerVelocity.X;
-	// Set the rotation so that the character faces his direction of travel.
-	if (GetController())
+
+	if (IsAiming() && GetCharacterMovement() && GetCharacterMovement()->IsFalling())
 	{
-		APlayerController* PlController = Cast<APlayerController>(GetController());
-		if (bIsAiming)
+		StopAim();
+	}
+
+	if (bThrowing)
+	{
+		ThrowTimerCurrent -= DeltaSeconds;
+		if (ThrowTimerCurrent <= 0.f)
+		{
+			StopThrow();
+		}
+	}
+
+	APlayerController* PlController = Cast<APlayerController>(GetController());
+	if (PlController)
+	{
+		if (IsAiming())
 		{
 			FVector Direction;
 			FVector Location;
@@ -314,11 +442,11 @@ void AWTFProjectCharacter::UpdateCharacter()
 				Direction = (Location - GetActorLocation()).GetSafeNormal();
 				if (Direction.X >= 0)
 				{
-					GetController()->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+					PlController->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
 				}
 				else
 				{
-					GetController()->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+					PlController->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
 				}
 				float AimAngle = FMath::UnwindDegrees(FMath::RadiansToDegrees(acosf(FVector::DotProduct(GetActorForwardVector(), Direction)))) * FMath::Sign(Direction.Z);
 
@@ -351,4 +479,4 @@ void AWTFProjectCharacter::UpdateCharacter()
 		}
 	}
 }
-#pragma optimize("", on)
+//#pragma optimize("", on)

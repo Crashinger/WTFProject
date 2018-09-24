@@ -41,7 +41,8 @@ UENUM(BlueprintType)
 enum class EMovementBlockReason : uint8
 {
 	MBR_Pick UMETA(DisplayName = "Pick"),
-	MBR_Aim UMETA(DisplayName = "Aim")
+	MBR_Aim UMETA(DisplayName = "Aim"),
+	MBR_Throw UMETA(DisplayName = "Throw")
 };
 
 USTRUCT(BlueprintType)
@@ -96,49 +97,63 @@ protected:
 
 	EAnimationState CurrentAnimationState = EAnimationState::AS_Idle;
 
+private:
+	bool bIsAiming = false;
+
 	TArray<FMovementBlock> MovementBlocks;
 
-	bool bIsAiming = false;
-	int Ammo = 0;
+	int Ammo = 5;
 
+	float ThrowTimerCurrent = 0.f;
+	bool bThrowing = false;
 
+	AStone* PickStone = nullptr;
+
+public:
+	float ThrowTimer = 0.5f;
+
+protected:
 	bool CanMove() const;
 	void UpdateMovementBlocks(float DeltaTime);
 
-	void UpdateAnimationState();
-
-	/** Called to choose the correct animation to play based on the character's movement state */
 	UFUNCTION()
 	void UpdateAnimation();
 	void UpdateFlipbook();
+	void UpdateAnimationState();
 
-	/** Called for side to side input */
 	void MoveRight(float Value);
+	void CharJump();
 
-	void UpdateCharacter();
+	void UpdateCharacter(float DeltaSeconds);
 
-	/** Handle touch inputs. */
 	void TouchStarted(const ETouchIndex::Type FingerIndex, const FVector Location);
-
-	/** Handle touch stop event. */
 	void TouchStopped(const ETouchIndex::Type FingerIndex, const FVector Location);
 
-	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
-	// End of APawn interface
 
 	void Pick();
+	bool CanPick();
+	void GetStone();
+
+	bool CanThrow();
 	void Throw();
+	void StopThrow();
+
 	void Aim();
-	void CharJump();
+	void StopAim();
+	bool IsAiming();
+	bool CanAim();
+
+	void AddMovementBlock(FMovementBlock BlockInfo);
+	void RemoveSpecificMovementBlock(EMovementBlockReason Block);
 
 	FVector GetViewDirection() const;
 
 public:
+
 	AWTFProjectCharacter();
 
-	/** Returns SideViewCameraComponent subobject **/
 	FORCEINLINE class UCameraComponent* GetSideViewCameraComponent() const { return SideViewCameraComponent; }
-	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+
 };

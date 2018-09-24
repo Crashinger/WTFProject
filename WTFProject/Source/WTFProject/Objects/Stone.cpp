@@ -17,14 +17,22 @@ AStone::AStone()
 
 	MovementComponent = CreateDefaultSubobject<UProjectileMovement>(TEXT("ProjectileMovementComponent"));
 	MovementComponent->SetUpdatedComponent(CollisionSphere);
+
+	MovementComponent->bConstrainToPlane = true;
+	MovementComponent->SetPlaneConstraintNormal(FVector(0.0f, -1.0f, 0.0f));
+}
+
+bool AStone::CanBePicked()
+{
+	return !bCanDealDamage;
 }
 
 void AStone::OnHit(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
 {
 	AWTFProjectCharacter* HitChar = Cast<AWTFProjectCharacter>(OtherActor);
-	if (CanDealDamage && HitChar && HitChar != GetInstigator())
+	if (bCanDealDamage && (!HitChar || HitChar != GetInstigator()))
 	{
-		CanDealDamage = false;
+		bCanDealDamage = false;
 		MovementComponent->HandleImpact(SweepResult);
 	}
 }
