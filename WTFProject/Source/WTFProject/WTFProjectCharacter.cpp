@@ -104,10 +104,9 @@ void AWTFProjectCharacter::Pick()
 				FMovementBlock BlockInfo;
 				BlockInfo.bTimed = true;
 				BlockInfo.Reason = EMovementBlockReason::MBR_Pick;
-				BlockInfo.Time = 1.f;
-				CurrentAnimationState = EAnimationState::AS_Pick;
+				BlockInfo.Time = 0.6f;
 				AddMovementBlock(BlockInfo);
-				UpdateFlipbook();
+				SetAnimationState(ESimpleAnimationState::SAS_Pick);
 			}
 		}
 	}
@@ -130,6 +129,7 @@ bool AWTFProjectCharacter::CanThrow()
 	bool Res = !GetCharacterMovement() || !GetCharacterMovement()->IsFalling();
 	Res &= Ammo > 0;
 	Res &= !bThrowing;
+	Res &= bIsAiming;
 	return Res;
 }
 
@@ -137,6 +137,8 @@ void AWTFProjectCharacter::Throw()
 {
 	if (CanThrow())
 	{
+		if (GetCharacterMovement())
+			GetCharacterMovement()->StopMovementImmediately();
 		bThrowing = true;
 		StopAim();
 		FMovementBlock BlockInfo;
@@ -145,8 +147,7 @@ void AWTFProjectCharacter::Throw()
 		BlockInfo.Time = ThrowTimer;
 		ThrowTimerCurrent = ThrowTimer;
 		AddMovementBlock(BlockInfo);
-		CurrentAnimationState = EAnimationState::AS_Throw;
-		UpdateFlipbook();
+		SetAnimationState(ESimpleAnimationState::SAS_Throw);
 	}
 }
 
@@ -170,17 +171,17 @@ void AWTFProjectCharacter::Aim()
 	if (CanAim())
 	{
 		bIsAiming = true;
-		FMovementBlock BlockInfo;
+		/*FMovementBlock BlockInfo;
 		BlockInfo.Reason = EMovementBlockReason::MBR_Aim;
 		BlockInfo.bTimed = false;
-		AddMovementBlock(BlockInfo);
+		AddMovementBlock(BlockInfo);*/
 	}
 }
 
 void AWTFProjectCharacter::StopAim()
 {
 	bIsAiming = false;
-	RemoveSpecificMovementBlock(EMovementBlockReason::MBR_Aim);
+	//RemoveSpecificMovementBlock(EMovementBlockReason::MBR_Aim);
 }
 
 bool AWTFProjectCharacter::IsAiming()
@@ -200,8 +201,7 @@ void AWTFProjectCharacter::CharJump()
 	if (CanMove() && GetCharacterMovement() && !GetCharacterMovement()->IsFalling())
 	{
 		Jump();
-		CurrentAnimationState = EAnimationState::AS_Jump;
-		UpdateFlipbook();
+		SetAnimationState(ESimpleAnimationState::SAS_Jump);
 	}
 }
 
@@ -283,30 +283,167 @@ void AWTFProjectCharacter::UpdateMovementBlocks(float DeltaTime)
 
 void AWTFProjectCharacter::UpdateAnimationState()
 {
-	EAnimationState OldAnimationState = CurrentAnimationState;
-
 	const FVector PlayerVelocity = GetVelocity();
 	const float PlayerSpeedSqr = PlayerVelocity.SizeSquared();
-
-	//Кривовато
-	if (PlayerSpeedSqr > 0.0f)
+	if (bIsAiming)
+	{
+		SetAnimationState(ESimpleAnimationState::SAS_Aim);
+	}
+	else if (PlayerSpeedSqr > 0.0f)
 	{
 		if (GetCharacterMovement() && GetCharacterMovement()->IsFalling())
 		{
-			if (CurrentAnimationState != EAnimationState::AS_Jump)
-				CurrentAnimationState = EAnimationState::AS_Fall;
+			SetAnimationState(ESimpleAnimationState::SAS_Fall);
 		}
 		else
-			CurrentAnimationState = EAnimationState::AS_Walk;
+			SetAnimationState(ESimpleAnimationState::SAS_Walk);
 	}
-	else if (CurrentAnimationState == EAnimationState::AS_Walk || CurrentAnimationState == EAnimationState::AS_Fall || CurrentAnimationState == EAnimationState::AS_Jump)
+	else
 	{
-		CurrentAnimationState = EAnimationState::AS_Idle;
+		SetAnimationState(ESimpleAnimationState::SAS_Idle);
 	}
+}
 
-	if (OldAnimationState != CurrentAnimationState)
+void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
+{
+	EAnimationState OldState = CurrentAnimationState;
+	bool SetReverse = false;
+	switch (NewState)
 	{
-		UpdateAnimation();
+	case ESimpleAnimationState::SAS_Idle:
+	{
+		if (CurrentAnimationState != EAnimationState::AS_ThrowUp &&
+			CurrentAnimationState != EAnimationState::AS_ThrowFront &&
+			CurrentAnimationState != EAnimationState::AS_ThrowDown &&
+			CurrentAnimationState != EAnimationState::AS_Pick &&
+			CurrentAnimationState != EAnimationState::AS_Hit)
+		{
+			if (Ammo > 0)
+				CurrentAnimationState = EAnimationState::AS_CarryIdle;
+			else
+				CurrentAnimationState = EAnimationState::AS_Idle;
+		}
+		break;
+	}
+	case ESimpleAnimationState::SAS_Fall:
+	{
+		if (CurrentAnimationState != EAnimationState::AS_Jump && CurrentAnimationState != EAnimationState::AS_CarryJump)
+		{
+			if (Ammo > 0)
+			{
+				CurrentAnimationState = EAnimationState::AS_CarryFall;
+			}
+			else
+			{
+				CurrentAnimationState = EAnimationState::AS_Fall;
+			}
+		}
+		break;
+	}
+	case ESimpleAnimationState::SAS_Aim:
+	{
+		const FVector PlayerVelocity = GetVelocity();
+		bool AimWalkSameSide = true;
+		float VelocityXSign = FMath::Sign(PlayerVelocity.X);
+		if (!FMath::IsNearlyZero(VelocityXSign) && (VelocityXSign != FMath::Sign(AimDirection.X)))
+			AimWalkSameSide = false;
+		if (AimWalkSameSide && bIsReversing)
+		{
+			bIsReversing = false;
+			GetSprite()->Play();
+		}
+		else if (!AimWalkSameSide && !bIsReversing)
+		{
+			bIsReversing = true;
+			SetReverse = true;
+			GetSprite()->Reverse();
+		}
+
+		const float PlayerSpeedSqr = PlayerVelocity.SizeSquared();
+		float AimAngle = FMath::UnwindDegrees(FMath::RadiansToDegrees(acosf(FVector::DotProduct(GetActorForwardVector(), AimDirection)))) * FMath::Sign(AimDirection.Z);
+		if (AimAngle > 30.f)
+		{
+			if (PlayerSpeedSqr > 0.0f)
+			{
+				CurrentAnimationState = EAnimationState::AS_WalkAimingUp;
+			}
+			else
+			{
+				CurrentAnimationState = EAnimationState::AS_AimingUp;
+			}
+		}
+		else if (AimAngle < -30.f)
+		{
+			if (PlayerSpeedSqr > 0.0f)
+			{
+				CurrentAnimationState = EAnimationState::AS_WalkAimingDown;
+			}
+			else
+			{
+				CurrentAnimationState = EAnimationState::AS_AimingDown;
+			}
+		}
+		else
+		{
+			if (PlayerSpeedSqr > 0.0f)
+			{
+				CurrentAnimationState = EAnimationState::AS_WalkAimingFront;
+			}
+			else
+			{
+				CurrentAnimationState = EAnimationState::AS_AimingFront;
+			}
+		}
+		break;
+	}
+	case ESimpleAnimationState::SAS_Jump:
+	{
+		if (Ammo > 0)
+			CurrentAnimationState = EAnimationState::AS_CarryJump;
+		else
+			CurrentAnimationState = EAnimationState::AS_Jump;
+		break;
+	}
+	case ESimpleAnimationState::SAS_Pick:
+	{
+		CurrentAnimationState = EAnimationState::AS_Pick;
+		break;
+	}
+	case ESimpleAnimationState::SAS_Throw:
+	{
+		float AimAngle = FMath::UnwindDegrees(FMath::RadiansToDegrees(acosf(FVector::DotProduct(GetActorForwardVector(), AimDirection)))) * FMath::Sign(AimDirection.Z);
+		if (AimAngle > 30.f)
+		{
+			CurrentAnimationState = EAnimationState::AS_ThrowUp;
+		}
+		else if (AimAngle < -30.f)
+		{
+			CurrentAnimationState = EAnimationState::AS_ThrowDown;
+		}
+		else
+		{
+			CurrentAnimationState = EAnimationState::AS_ThrowFront;
+		}
+		break;
+	}
+	case ESimpleAnimationState::SAS_Walk:
+	{
+		if (Ammo > 0)
+			CurrentAnimationState = EAnimationState::AS_CarryWalk;
+		else
+			CurrentAnimationState = EAnimationState::AS_Walk;
+		break;
+	}
+	}
+	
+	if (OldState != CurrentAnimationState)
+	{
+		if (bIsReversing && !SetReverse)
+		{
+			bIsReversing = false;
+			GetSprite()->Play();
+		}
+		UpdateFlipbook();
 	}
 }
 
@@ -319,30 +456,40 @@ void AWTFProjectCharacter::UpdateFlipbook()
 		if (AnimationStates[CurrentAnimationState].Animations[Indx])
 			GetSprite()->SetFlipbook(AnimationStates[CurrentAnimationState].Animations[Indx]);
 	}
-	GetSprite()->PlayFromStart();
+	if (bIsReversing)
+	{
+		GetSprite()->ReverseFromEnd();
+	}
+	else
+	{
+		GetSprite()->PlayFromStart();
+	}
 }
 
 void AWTFProjectCharacter::UpdateAnimation()
 {
-	if (
-		CurrentAnimationState == EAnimationState::AS_Throw ||
+	if (CurrentAnimationState == EAnimationState::AS_ThrowUp ||
+		CurrentAnimationState == EAnimationState::AS_ThrowFront ||
+		CurrentAnimationState == EAnimationState::AS_ThrowDown ||
 		CurrentAnimationState == EAnimationState::AS_Pick ||
-		CurrentAnimationState == EAnimationState::AS_Hit
-		)
+		CurrentAnimationState == EAnimationState::AS_Hit)
 	{
-		CurrentAnimationState = EAnimationState::AS_Idle;
+		//Чит? Или мб ок?
+		CurrentAnimationState = EAnimationState::AS_Walk;
+		SetAnimationState(ESimpleAnimationState::SAS_Idle);
 	}
-	else if (CurrentAnimationState == EAnimationState::AS_Jump)
+	else if (CurrentAnimationState == EAnimationState::AS_Jump || CurrentAnimationState == EAnimationState::AS_CarryJump)
 	{
-		CurrentAnimationState = EAnimationState::AS_Fall;
+		//Чит? Или мб ок?
+		CurrentAnimationState = EAnimationState::AS_Walk;
+		SetAnimationState(ESimpleAnimationState::SAS_Fall);
 	}
-
-	if (
-		CurrentAnimationState != EAnimationState::AS_AimingDown &&
-		CurrentAnimationState != EAnimationState::AS_AimingFront &&
-		CurrentAnimationState != EAnimationState::AS_AimingUp
-		)
-	UpdateFlipbook();
+	else if (CurrentAnimationState != EAnimationState::AS_AimingDown &&
+			 CurrentAnimationState != EAnimationState::AS_AimingFront &&
+			 CurrentAnimationState != EAnimationState::AS_AimingUp)
+	{
+		UpdateFlipbook();
+	}
 }
 
 void AWTFProjectCharacter::Tick(float DeltaSeconds)
@@ -410,12 +557,11 @@ void AWTFProjectCharacter::TouchStopped(const ETouchIndex::Type FingerIndex, con
 
 void AWTFProjectCharacter::UpdateCharacter(float DeltaSeconds)
 {
-	UpdateAnimationState();
 
 	const FVector PlayerVelocity = GetVelocity();	
 	float TravelDirection = PlayerVelocity.X;
 
-	if (IsAiming() && GetCharacterMovement() && GetCharacterMovement()->IsFalling())
+	if (IsAiming() && !CanAim())
 	{
 		StopAim();
 	}
@@ -439,33 +585,14 @@ void AWTFProjectCharacter::UpdateCharacter(float DeltaSeconds)
 			if (PlController->DeprojectMousePositionToWorld(Location, Direction))
 			{
 				Location.Y = 0.f;
-				Direction = (Location - GetActorLocation()).GetSafeNormal();
-				if (Direction.X >= 0)
+				AimDirection = (Location - GetActorLocation()).GetSafeNormal();
+				if (AimDirection.X >= 0)
 				{
 					PlController->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
 				}
 				else
 				{
 					PlController->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
-				}
-				float AimAngle = FMath::UnwindDegrees(FMath::RadiansToDegrees(acosf(FVector::DotProduct(GetActorForwardVector(), Direction)))) * FMath::Sign(Direction.Z);
-
-				EAnimationState OldState = CurrentAnimationState;
-				if (AimAngle > 30.f)
-				{
-					CurrentAnimationState = EAnimationState::AS_AimingUp;
-				}
-				else if (AimAngle < -30.f)
-				{
-					CurrentAnimationState = EAnimationState::AS_AimingDown;
-				}
-				else
-				{
-					CurrentAnimationState = EAnimationState::AS_AimingFront;
-				}
-				if (OldState != CurrentAnimationState)
-				{
-					UpdateFlipbook();
 				}
 			}
 		}
@@ -478,5 +605,6 @@ void AWTFProjectCharacter::UpdateCharacter(float DeltaSeconds)
 			GetController()->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
 		}
 	}
+	UpdateAnimationState();
 }
 //#pragma optimize("", on)

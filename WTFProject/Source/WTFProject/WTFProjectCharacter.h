@@ -19,6 +19,18 @@ class AStone;
  * The Sprite component (inherited from APaperCharacter) handles the visuals
  */
 
+
+enum class ESimpleAnimationState : uint8
+{
+	SAS_Idle UMETA(DisplayName = "Idle"),
+	SAS_Walk UMETA(DisplayName = "Walk"),
+	SAS_Jump UMETA(DisplayName = "Jump"),
+	SAS_Fall UMETA(DisplayName = "Fall"),
+	SAS_Aim UMETA(DisplayName = "Aim"),
+	SAS_Throw UMETA(DisplayName = "Throw"),
+	SAS_Pick UMETA(DisplayName = "Pick")
+};
+
 UENUM(BlueprintType)
 enum class EAnimationState: uint8
 {
@@ -27,10 +39,16 @@ enum class EAnimationState: uint8
 	AS_CarryIdle UMETA(DisplayName = "CarryIdle"),
 	AS_CarryWalk UMETA(DisplayName = "CarryWalk"),
 	AS_CarryFall UMETA(DisplayName = "CarryFall"),
+	AS_CarryJump UMETA(DisplayName = "CarryJump"),
 	AS_AimingUp UMETA(DisplayName = "AimingUp"),
 	AS_AimingDown UMETA(DisplayName = "AimingDown"),
 	AS_AimingFront UMETA(DisplayName = "AimingFront"),
-	AS_Throw UMETA(DisplayName = "Throw"),
+	AS_WalkAimingUp UMETA(DisplayName = "WalkAimingUp"),
+	AS_WalkAimingDown UMETA(DisplayName = "WalkAimingDown"),
+	AS_WalkAimingFront UMETA(DisplayName = "WalkAimingFront"),
+	AS_ThrowUp UMETA(DisplayName = "ThrowUp"),
+	AS_ThrowDown UMETA(DisplayName = "ThrowDown"),
+	AS_ThrowFront UMETA(DisplayName = "ThrowForward"),
 	AS_Pick UMETA(DisplayName = "Pick"),
 	AS_Hit UMETA(DisplayName = "Hit"),
 	AS_Jump UMETA(DisplayName = "Jump"),
@@ -99,6 +117,7 @@ protected:
 
 private:
 	bool bIsAiming = false;
+	FVector AimDirection;
 
 	TArray<FMovementBlock> MovementBlocks;
 
@@ -108,6 +127,8 @@ private:
 	bool bThrowing = false;
 
 	AStone* PickStone = nullptr;
+
+	bool bIsReversing = false;
 
 public:
 	float ThrowTimer = 0.5f;
@@ -120,6 +141,7 @@ protected:
 	void UpdateAnimation();
 	void UpdateFlipbook();
 	void UpdateAnimationState();
+	void SetAnimationState(ESimpleAnimationState NewState);
 
 	void MoveRight(float Value);
 	void CharJump();
