@@ -100,6 +100,9 @@ class AWTFProjectCharacter : public APaperCharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class USpringArmComponent* CameraBoom;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Stone, meta = (AllowPrivateAccess = "true"))
+	class UPaperSpriteComponent* StoneSpriteComponent;
+
 	//UTextRenderComponent* TextComponent;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void BeginPlay() override;
@@ -118,6 +121,7 @@ protected:
 private:
 	bool bIsAiming = false;
 	FVector AimDirection;
+	FVector ThrowDirection;
 
 	TArray<FMovementBlock> MovementBlocks;
 
@@ -139,7 +143,7 @@ protected:
 
 	UFUNCTION()
 	void UpdateAnimation();
-	void UpdateFlipbook();
+	void UpdateFlipbook(bool SameFrame);
 	void UpdateAnimationState();
 	void SetAnimationState(ESimpleAnimationState NewState);
 
@@ -169,7 +173,12 @@ protected:
 	void AddMovementBlock(FMovementBlock BlockInfo);
 	void RemoveSpecificMovementBlock(EMovementBlockReason Block);
 
+	void AttachStone();
+	void DetachStone();
+
 	FVector GetViewDirection() const;
+
+	void SetCharacterDirectionRight(bool IsRight);
 
 public:
 

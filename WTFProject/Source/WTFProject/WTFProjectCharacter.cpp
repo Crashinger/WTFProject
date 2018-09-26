@@ -71,6 +71,10 @@ AWTFProjectCharacter::AWTFProjectCharacter()
 		GetCharacterMovement()->bUseFlatBaseForFloorChecks = true;
 	}
 
+	StoneSpriteComponent = CreateDefaultSubobject<UPaperSpriteComponent>(TEXT("StoneSpriteComponent"));
+	StoneSpriteComponent->SetupAttachment(GetSprite(), TEXT("StoneSocket"));
+	StoneSpriteComponent->bVisible = false;
+
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
 
@@ -121,6 +125,10 @@ void AWTFProjectCharacter::GetStone()
 {
 	if (PickStone)
 		PickStone->Destroy();
+
+	if (Ammo == 0)
+		AttachStone();
+
 	Ammo++;
 }
 
@@ -137,6 +145,7 @@ void AWTFProjectCharacter::Throw()
 {
 	if (CanThrow())
 	{
+		ThrowDirection = GetViewDirection();
 		if (GetCharacterMovement())
 			GetCharacterMovement()->StopMovementImmediately();
 		bThrowing = true;
@@ -159,9 +168,11 @@ void AWTFProjectCharacter::StopThrow()
 	{
 		FActorSpawnParameters Params;
 		Params.Instigator = this;
-		FRotator Rotation = GetViewDirection().Rotation();
+		FRotator Rotation = ThrowDirection.Rotation();
 		FVector Location = GetActorLocation() + StoneSpawnLocation;
 		Ammo--;
+		if (Ammo == 0)
+			DetachStone();
 		World->SpawnActor(StoneClass, &Location, &Rotation, Params);
 	}
 }
@@ -238,6 +249,16 @@ void AWTFProjectCharacter::RemoveSpecificMovementBlock(EMovementBlockReason Bloc
 	}
 }
 
+void AWTFProjectCharacter::AttachStone()
+{
+	StoneSpriteComponent->SetVisibility(true, true);
+}
+
+void AWTFProjectCharacter::DetachStone()
+{
+	StoneSpriteComponent->SetVisibility(false, true);
+}
+
 FVector AWTFProjectCharacter::GetViewDirection() const
 {
 	FVector Res = FVector(0.f, 0.f, 0.f);
@@ -250,6 +271,29 @@ FVector AWTFProjectCharacter::GetViewDirection() const
 	}
 	Res = (Res - GetActorLocation()).GetSafeNormal();
 	return Res;
+}
+
+void AWTFProjectCharacter::SetCharacterDirectionRight(bool IsRight)
+{
+	APlayerController* PlController = Cast<APlayerController>(GetController());
+	if (PlController)
+	{
+		if (IsRight)
+		{
+			FVector NewLocation = StoneSpriteComponent->RelativeLocation;
+			NewLocation.Y = 1.f;
+			StoneSpriteComponent->SetRelativeLocation(NewLocation);
+			PlController->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+		}
+		else
+		{
+			FVector NewLocation = StoneSpriteComponent->RelativeLocation;
+			NewLocation.Y = -1.f;
+			StoneSpriteComponent->SetRelativeLocation(NewLocation);
+			PlController->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+		}
+	}
+	
 }
 
 
@@ -308,6 +352,7 @@ void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
 {
 	EAnimationState OldState = CurrentAnimationState;
 	bool SetReverse = false;
+	bool SameFrame = false;
 	switch (NewState)
 	{
 	case ESimpleAnimationState::SAS_Idle:
@@ -365,6 +410,7 @@ void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
 		{
 			if (PlayerSpeedSqr > 0.0f)
 			{
+				SameFrame = true;
 				CurrentAnimationState = EAnimationState::AS_WalkAimingUp;
 			}
 			else
@@ -376,6 +422,7 @@ void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
 		{
 			if (PlayerSpeedSqr > 0.0f)
 			{
+				SameFrame = true;
 				CurrentAnimationState = EAnimationState::AS_WalkAimingDown;
 			}
 			else
@@ -387,6 +434,7 @@ void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
 		{
 			if (PlayerSpeedSqr > 0.0f)
 			{
+				SameFrame = true;
 				CurrentAnimationState = EAnimationState::AS_WalkAimingFront;
 			}
 			else
@@ -443,12 +491,13 @@ void AWTFProjectCharacter::SetAnimationState(ESimpleAnimationState NewState)
 			bIsReversing = false;
 			GetSprite()->Play();
 		}
-		UpdateFlipbook();
+		UpdateFlipbook(SameFrame);
 	}
 }
 
-void AWTFProjectCharacter::UpdateFlipbook()
+void AWTFProjectCharacter::UpdateFlipbook(bool SameFrame)
 {
+	float CurrentTime = GetSprite()->GetPlaybackPosition();
 	if (AnimationStates.Contains(CurrentAnimationState) && AnimationStates[CurrentAnimationState].Animations.Num() > 0)
 	{
 		int Indx = FMath::Rand() % AnimationStates[CurrentAnimationState].Animations.Num();
@@ -456,18 +505,30 @@ void AWTFProjectCharacter::UpdateFlipbook()
 		if (AnimationStates[CurrentAnimationState].Animations[Indx])
 			GetSprite()->SetFlipbook(AnimationStates[CurrentAnimationState].Animations[Indx]);
 	}
-	if (bIsReversing)
+	if (SameFrame && GetSprite()->GetFlipbookLength() >= CurrentTime)
 	{
-		GetSprite()->ReverseFromEnd();
+		GetSprite()->SetPlaybackPosition(CurrentTime, false);
+		if (bIsReversing)
+			GetSprite()->Reverse();
+		else
+			GetSprite()->Play();
 	}
 	else
 	{
-		GetSprite()->PlayFromStart();
+		if (bIsReversing)
+		{
+			GetSprite()->ReverseFromEnd();
+		}
+		else
+		{
+			GetSprite()->PlayFromStart();
+		}
 	}
 }
 
 void AWTFProjectCharacter::UpdateAnimation()
 {
+	bool SameFrame = false;
 	if (CurrentAnimationState == EAnimationState::AS_ThrowUp ||
 		CurrentAnimationState == EAnimationState::AS_ThrowFront ||
 		CurrentAnimationState == EAnimationState::AS_ThrowDown ||
@@ -488,7 +549,7 @@ void AWTFProjectCharacter::UpdateAnimation()
 			 CurrentAnimationState != EAnimationState::AS_AimingFront &&
 			 CurrentAnimationState != EAnimationState::AS_AimingUp)
 	{
-		UpdateFlipbook();
+		UpdateFlipbook(SameFrame);
 	}
 }
 
@@ -503,7 +564,13 @@ void AWTFProjectCharacter::Tick(float DeltaSeconds)
 void AWTFProjectCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	GetSprite()->PlayFromStart();
+	if (GetSprite())
+		GetSprite()->PlayFromStart();
+
+	if (Ammo > 0)
+	{
+		AttachStone();
+	}
 	MovementBlocks.Empty();
 }
 
@@ -588,21 +655,21 @@ void AWTFProjectCharacter::UpdateCharacter(float DeltaSeconds)
 				AimDirection = (Location - GetActorLocation()).GetSafeNormal();
 				if (AimDirection.X >= 0)
 				{
-					PlController->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+					SetCharacterDirectionRight(true);
 				}
 				else
 				{
-					PlController->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+					SetCharacterDirectionRight(false);
 				}
 			}
 		}
 		else if (TravelDirection < 0.0f)
 		{
-			GetController()->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
+			SetCharacterDirectionRight(false);
 		}
 		else if (TravelDirection > 0.0f)
 		{
-			GetController()->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
+			SetCharacterDirectionRight(true);
 		}
 	}
 	UpdateAnimationState();
